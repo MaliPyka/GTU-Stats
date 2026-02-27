@@ -1,3 +1,4 @@
+import asyncio
 import re
 
 from playwright.async_api import async_playwright
@@ -70,3 +71,65 @@ def parse_grades(html_content):
             })
 
     return grades_data
+
+
+async def get_all_curses(login, password):
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=False)
+        page = await browser.new_page()
+
+        try:
+            await page.goto("https://elearning.gtu.ge/login/index.php")
+
+            await page.fill('input[id="username"]', login)
+            await page.fill('input[id="password"]', password)
+            await page.keyboard.press("Enter")
+
+            try:
+                await page.wait_for_selector(".coursename", timeout=10000)
+            except:
+                print("Селектор .coursename не найден, пробую подождать сеть...")
+                await page.wait_for_load_state("networkidle")
+            await asyncio.sleep(2)
+            content = await page.content()
+            await browser.close()
+            return curses_parser(content)
+
+        except Exception as e:
+            print(f"Ошибка парсинга: {e}")
+            return None
+
+
+def curses_parser(content):
+    soup = BeautifulSoup(content, 'html.parser')
+    curses_set = set()
+    curses_data = []
+
+    rows = soup.select("a.aalink.coursename")
+
+    for row in rows:
+        raw_text = row.get_text(separator=" ", strip=True)
+
+        clean_text = raw_text.replace("Course name", "") \
+            .replace("Название курса", "") \
+            .replace("Course is starred", "") \
+            .replace("Курс добавлен в избранное", "")
+
+        clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+        clean_text = re.sub(r'\d{4}-\d{4}\(.{1,2}\)-\d+\s*', '', clean_text)
+
+        if "ქართული ენა" in clean_text:
+            clean_text = "Грузинский язык – 1"
+
+        clean_text = re.sub(r'\(?\d+კრ\)?', '', clean_text).strip()
+
+        if re.search(r'[\u10A0-\u10FF]', clean_text):
+            continue
+
+        clean_text = clean_text.strip(" -")
+
+        if clean_text and clean_text not in curses_set:
+            curses_set.add(clean_text)
+            curses_data.append({"curse": clean_text})
+
+    return curses_data

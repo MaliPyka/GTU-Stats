@@ -1,5 +1,5 @@
 from aiogram import F, Router
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 from aiogram.filters import CommandStart, Command
 
 from aiogram.fsm.state import State, StatesGroup
@@ -9,7 +9,7 @@ from aiogram.utils.markdown import hbold, hcode, hitalic
 from db.requests import add_user, check_user_exists, update_lessons_and_grades, get_user_data
 from core.security import encrypt_password, decrypt_password
 from core.scraper import get_gtu_grades
-from core.config import get_grade_badge
+from bot.keyboards import refresh_button
 
 router = Router()
 
@@ -88,12 +88,20 @@ async def save_password_cmd(message: Message, state: FSMContext):
 
 
 @router.message(Command("stats"))
-async def stats_cmd(message: Message):
-    wait_msg = await message.answer("⏳ Собираю данные c портала, подожди немного...")
+@router.callback_query(F.data == "refresh")
+async def stats_cmd(event: Message | CallbackQuery):
 
-    user_data = await get_user_data(message.from_user.id)
+    wait_msg = "⏳ Собираю данные c портала, подожди немного..."
+
+    if isinstance(event, Message):
+        wait_msg = await event.answer(wait_msg)
+        user_id = event.from_user.id
+    else:
+        wait_msg = await event.message.edit_text("⏳ Собираю данные c портала, подожди немного...")
+        user_id = event.from_user.id
+
+    user_data = await get_user_data(user_id)
     decrypted_password = decrypt_password(user_data.encrypted_password)
-    user_id = message.from_user.id
 
     try:
         data = await get_gtu_grades(user_data.login, decrypted_password)
@@ -105,7 +113,7 @@ async def stats_cmd(message: Message):
             result = await update_lessons_and_grades(user_id, item['subject'], score_float)
 
         if not result:
-            await wait_msg.edit_text("❌ Предметы не найдены или сайт вернул пустоту.")
+            await event.message.edit_text("❌ Предметы не найдены или сайт вернул пустоту.")
             return
 
 
@@ -113,33 +121,34 @@ async def stats_cmd(message: Message):
 
         for grade_obj in result:
             name = grade_obj.lesson_name.strip()
-            
-            # Аккуратно откусываем только ЛИШНЮЮ закрывающую скобку
+
             if name.endswith(')') and name.count(')') > name.count('('):
                 name = name[:-1].strip()
 
-            # Форматируем балл
             score_str = f"{grade_obj.score:2.1f}"
-            
-            # Считаем разницу
+
             diff = round(grade_obj.score - grade_obj.old_score, 1)
             status = ""
-            
-            # ВАЖНО: теги <b> теперь внутри текста, чтобы не было пустых <b></b>
+
             if diff > 0:
                 status = f" <b>📈 +{diff}</b>"
             elif diff < 0:
                 status = f" <b>📉 {diff}</b>"
 
-            # Собираем финальную строку (никаких тегов снаружи status)
             line = f"📚 <code>{score_str:>4}</code> | {name}{status}"
             text_lines.append(line)
 
         final_text = "\n".join(text_lines)
 
-        await wait_msg.edit_text(final_text, parse_mode="HTML")
+        if isinstance(event, CallbackQuery):
+            await wait_msg.edit_text(final_text, parse_mode="HTML", reply_markup=refresh_button())
+        elif isinstance(event, Message):
+            await wait_msg.edit_text(final_text, parse_mode="HTML", reply_markup=refresh_button())
 
     except Exception as e:
+        if isinstance(event, CallbackQuery):
+            await wait_msg.edit_text(f"❌ Упс, произошла ошибка: {e}")
+        elif isinstance(event, Message):
+            await wait_msg.edit_text(f"❌ Упс, произошла ошибка: {e}")
 
-        await wait_msg.edit_text(f"❌ Упс, произошла ошибка: {e}")
 
