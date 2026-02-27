@@ -18,3 +18,19 @@ class BotTokenConfig:
 
 class EncryptConfig:
     ENCRYPTION_KEY=os.getenv("ENCRYPTION_KEY")
+
+
+def get_grade_badge(score: float) -> str:
+    """Возвращает эмодзи и букву оценки на основе баллов GTU."""
+    if score >= 91:
+        return "🟢 A"
+    elif score >= 81:
+        return "🟡 B"
+    elif score >= 71:
+        return "🟠 C"
+    elif score >= 61:
+        return "🟠 D"
+    elif score >= 51:
+        return "⚪️ E"
+    else:
+        return "🔴 F"
