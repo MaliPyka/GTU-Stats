@@ -47,7 +47,6 @@ async def get_all_user():
 
 async def sync_old_scores_in_db(tg_id, lesson_name, current_score):
     async with async_session() as session:
-        # Ищем запись и просто делаем old_score = current_score
         await session.execute(
             update(Grade)
             .where(Grade.tg_id == tg_id, Grade.lesson_name == lesson_name)
