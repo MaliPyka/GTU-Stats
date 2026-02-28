@@ -38,6 +38,22 @@ async def get_user_data(tg_id: int):
         query = await session.execute(select(User).where(User.tg_id == tg_id))
         user = query.scalars().one_or_none()
         return user
+    
+async def get_all_user():
+    async with async_session() as session:
+        query = await session.execute(select(User))
+        return query.scalars().all()
+    
+
+async def sync_old_scores_in_db(tg_id, lesson_name, current_score):
+    async with async_session() as session:
+        # Ищем запись и просто делаем old_score = current_score
+        await session.execute(
+            update(Grade)
+            .where(Grade.tg_id == tg_id, Grade.lesson_name == lesson_name)
+            .values(old_score=current_score)
+        )
+        await session.commit()
 
 
 
