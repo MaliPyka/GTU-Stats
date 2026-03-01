@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 async def get_gtu_grades(login, password):
     async with async_playwright() as p:
         # запуск браузера
-        browser = await p.chromium.launch(headless=False)
+        browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
 
         try:
@@ -75,7 +75,7 @@ def parse_grades(html_content):
 
 async def get_all_curses(login, password):
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
+        browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
 
         try:

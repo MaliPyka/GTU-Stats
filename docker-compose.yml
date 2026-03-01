@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+
+  db:
+    image: postgres:15
+    container_name: gtu_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 2323
+      POSTGRES_DB: gtu_stats
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  bot:
+    build: .
+    container_name: gtu_bot
+    restart: always
+    depends_on:
+      - db
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://myuser:mypassword@db:5432/gtu_stats
+
+volumes:
+  postgres_data:
