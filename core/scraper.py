@@ -36,41 +36,56 @@ async def get_gtu_grades(login, password):
                 print(f"Ошибка парсинга: {e}")
                 return None
         finally:
-            await browser.close() 
+            await browser.close()
 
 
 def parse_grades(html_content):
     soup = BeautifulSoup(html_content, 'html.parser')
-    grades_data = []
+    final_data = []
 
-    rows = soup.find_all(['mat-row', 'div'], class_='mat-mdc-row')
+    tables = soup.find_all(role='table')
+    if not tables:
+        return final_data
 
-    for row in rows:
-        subject_elem = row.select_one('.book-name-text')
-        score_elem = row.select_one('.cdk-column-score')
-        
-        if subject_elem and score_elem:
-            full_name = subject_elem.get_text(strip=True)
-            
-            match = re.search(r'[А-Яа-яЁё]', full_name)
-            
-            if match:
-                display_name = full_name[match.start():]
-                while display_name.count(')') > display_name.count('(') and display_name.endswith(')'):
-                    display_name = display_name[:-1]
-                    
-                display_name = display_name.strip()
-            else:
-                display_name = full_name
+    semester_pattern = re.compile(r"\d{4}/\d{4}.*")
 
-            score_value = score_elem.get_text(strip=True)
-            
-            grades_data.append({
-                "subject": display_name,
-                "score": score_value
-            })
+    for table in tables:
+        current_semester_data = []
 
-    return grades_data
+        semester_elem = table.find_previous(string=semester_pattern)
+        semester_name = semester_elem.strip() if semester_elem else "Unknown Semester"
+
+        rows = table.find_all(role='row')
+        for row in rows:
+            if not hasattr(row, 'select_one'):
+                continue
+
+            subject_elem = row.select_one('.book-name-text')
+            score_elem = row.select_one('.cdk-column-score')
+
+            if subject_elem and score_elem:
+                full_name = subject_elem.get_text(strip=True)
+                match = re.search(r'[А-Яа-яЁё]', full_name)
+
+                if match:
+                    display_name = full_name[match.start():]
+                    while display_name.count(')') > display_name.count('(') and display_name.endswith(')'):
+                        display_name = display_name[:-1]
+                    display_name = display_name.strip()
+                else:
+                    display_name = full_name
+
+                score_value = score_elem.get_text(strip=True)
+
+                current_semester_data.append({
+                    "semester": semester_name,
+                    "subject": display_name,
+                    "score": score_value
+                })
+
+        final_data = current_semester_data + final_data
+
+    return final_data
 
 
 async def get_all_curses(login, password):

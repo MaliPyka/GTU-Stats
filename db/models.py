@@ -23,7 +23,17 @@ class Grade(Base):
     score: Mapped[float] = mapped_column(Float, default = 0.0)
     old_score: Mapped[float] = mapped_column(Float, default = 0.0)
     last_update: Mapped[DateTime] = mapped_column(DateTime, server_default = func.now())
+    semester_id: Mapped[int] = mapped_column(ForeignKey("semesters.id"), nullable=False)
     actual: Mapped[bool] = mapped_column(default=True)
 
     def __repr__(self):
         return f"<Grade(subject={self.lesson_name}, score={self.score})>"
+
+
+class Semester(Base):
+    __tablename__ = "semesters"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    tg_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.tg_id"), nullable=False)
+    semester_name: Mapped[str] = mapped_column(String, nullable=False)
+

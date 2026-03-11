@@ -9,6 +9,9 @@ from db.models import User
 
 from bot.schedul import check_grades_job
 from bot.handlers import router
+from db.requests import get_all_semesters
+from bot.cache import update_cache, semester_cache
+
 
 bot = Bot(token=BotTokenConfig.BOT_TOKEN)
 dp = Dispatcher()
@@ -26,8 +29,11 @@ async def main():
 
         scheduler.add_job(check_grades_job, "interval", minutes=60, args=(bot,))
         scheduler.start()
-        await bot.delete_webhook(drop_pending_updates=True)
         await create_db()
+        await update_cache()
+        await bot.delete_webhook(drop_pending_updates=True)
+        cache = await get_all_semesters()
+        dp["semester_cache"] = cache
         await dp.start_polling(bot)
     except Exception as e:
         print(e)

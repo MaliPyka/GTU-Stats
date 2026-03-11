@@ -6,16 +6,21 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.markdown import hbold, hcode, hitalic
 
-from db.requests import add_user, check_user_exists, update_lessons_and_grades, get_user_data
+from db.requests import add_user, check_user_exists, update_lessons_and_grades, get_user_data, sync_semesters, \
+    get_all_semesters
 from core.security import encrypt_password, decrypt_password
 from core.scraper import get_gtu_grades
 from bot.keyboards import refresh_button
+from bot.cache import update_cache, semester_cache
 
 router = Router()
 
 class Registration(StatesGroup):
     waiting_login = State()
     waiting_password = State()
+
+
+
 
 @router.message(CommandStart())
 async def start_cmd(message: Message, state: FSMContext):
@@ -87,17 +92,18 @@ async def save_password_cmd(message: Message, state: FSMContext):
         await state.clear()
 
 
+
 @router.message(Command("stats"))
 @router.callback_query(F.data == "refresh")
 async def stats_cmd(event: Message | CallbackQuery):
 
-    wait_msg = "⏳ Собираю данные c портала, подожди немного..."
+    wait_msg_text = "⏳ Собираю данные c портала, подожди немного..."
 
     if isinstance(event, Message):
-        wait_msg = await event.answer(wait_msg)
+        wait_msg = await event.answer(wait_msg_text)
         user_id = event.from_user.id
     else:
-        wait_msg = await event.message.edit_text("⏳ Собираю данные c портала, подожди немного...")
+        wait_msg = await event.message.edit_text(wait_msg_text)
         user_id = event.from_user.id
 
     user_data = await get_user_data(user_id)
@@ -106,20 +112,41 @@ async def stats_cmd(event: Message | CallbackQuery):
     try:
         data = await get_gtu_grades(user_data.login, decrypted_password)
 
-        result = None
-
-        for item in data:
-            score_float = float(item['score']) 
-            result = await update_lessons_and_grades(user_id, item['subject'], score_float)
-
-        if not result:
-            await event.message.edit_text("❌ Предметы не найдены или сайт вернул пустоту.")
+        if not data:
+            await wait_msg.edit_text("❌ Предметы не найдены или сайт вернул пустоту.")
             return
 
+        result_grades = []
+
+        for item in data:
+            sem_name = item['semester']
+            subject_name = item['subject']
+            score_float = float(item['score'])
+
+            if sem_name not in semester_cache:
+                await sync_semesters(sem_name, user_id)
+                await update_cache()
+
+            semester_id = semester_cache.get(sem_name)
+
+            # Вызываем обновление
+            res = await update_lessons_and_grades(user_id, subject_name, score_float, semester_id)
+
+            # ПРОВЕРКА: Если вернулся список и он не пустой — берем первый элемент
+            if res and isinstance(res, list):
+                # Ищем наш предмет в списке, который вернула база
+                for db_item in res:
+                    if db_item.lesson_name == subject_name:
+                        result_grades.append(db_item)
+                        break  # Нашли нужный — выходим из внутреннего цикла
+
+            elif res and not isinstance(res, list):
+                # На случай, если функция вернет один объект
+                result_grades.append(res)
 
         text_lines = ["📊 <b>Твои баллы за семестр:</b>\n"]
 
-        for grade_obj in result:
+        for grade_obj in result_grades:
             name = grade_obj.lesson_name.strip()
 
             if name.endswith(')') and name.count(')') > name.count('('):
