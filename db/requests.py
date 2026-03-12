@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, select, update
+from sqlalchemy import BigInteger, func, select, update
 
 from db.models import User, Grade, Semester
 
@@ -30,6 +30,13 @@ async def update_lessons_and_grades(tg_id: int, lesson_name: str, score: float, 
                 grade_obj.score = score              
                 await session.commit()
 
+        query = select(func.max(Semester.id)).where(Semester.tg_id == tg_id)
+        result = await session.execute(query)
+        current_semester = result.scalar()
+
+        await session.execute(update(Grade).where(Grade.tg_id == tg_id, Grade.semester_id != current_semester).values(actual = False))
+        await session.commit()        
+
         result = await session.execute(select(Grade).where(Grade.tg_id == tg_id, Grade.actual == True))
         return result.scalars().all()
     
@@ -49,7 +56,7 @@ async def sync_old_scores_in_db(tg_id, lesson_name, current_score):
     async with async_session() as session:
         await session.execute(
             update(Grade)
-            .where(Grade.tg_id == tg_id, Grade.lesson_name == lesson_name)
+            .where(Grade.tg_id == tg_id, Grade.lesson_name == lesson_name, Grade.actual == True)
             .values(old_score=current_score)
         )
         await session.commit()
@@ -60,14 +67,15 @@ async def sync_semesters(semester_name: str, tg_id: int):
         session.add(Semester(semester_name=semester_name, tg_id=tg_id))
         await session.commit()
 
+
 async def get_all_semesters(tg_id: int):
     async with async_session() as session:
         query = await session.execute(select(Semester).where(Semester.tg_id==tg_id))
         return query.scalars().all()
 
-async def sync_actual_grades(tg_id: int):
-    async with async_session() as session:
-        pass
+        
+
+     
 
 
 

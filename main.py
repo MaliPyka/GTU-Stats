@@ -16,6 +16,8 @@ from bot.cache import update_cache, semester_cache
 bot = Bot(token=BotTokenConfig.BOT_TOKEN)
 dp = Dispatcher()
 
+tg_id = 992941959
+
 dp.include_router(router)
 
 async def create_db():
@@ -27,13 +29,11 @@ async def main():
     try:
         scheduler = AsyncIOScheduler()
 
-        scheduler.add_job(check_grades_job, "interval", minutes=60, args=(bot,))
+        scheduler.add_job(check_grades_job, "interval", minutes=1, args=(bot,))
         scheduler.start()
         await create_db()
-        await update_cache()
+        await update_cache(tg_id)
         await bot.delete_webhook(drop_pending_updates=True)
-        cache = await get_all_semesters()
-        dp["semester_cache"] = cache
         await dp.start_polling(bot)
     except Exception as e:
         print(e)

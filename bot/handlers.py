@@ -6,8 +6,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.markdown import hbold, hcode, hitalic
 
-from db.requests import add_user, check_user_exists, update_lessons_and_grades, get_user_data, sync_semesters, \
-    get_all_semesters
+from db.requests import add_user, check_user_exists, update_lessons_and_grades, get_user_data, sync_semesters, get_all_semesters
 from core.security import encrypt_password, decrypt_password
 from core.scraper import get_gtu_grades
 from bot.keyboards import refresh_button
@@ -118,30 +117,30 @@ async def stats_cmd(event: Message | CallbackQuery):
 
         result_grades = []
 
+        unique_sems = list(set(item['semester'] for item in data))
+        for sem in unique_sems:
+            if (user_id, sem) not in semester_cache:
+                await sync_semesters(sem, user_id)
+
+        await update_cache(user_id)
+
         for item in data:
             sem_name = item['semester']
             subject_name = item['subject']
             score_float = float(item['score'])
 
-            if sem_name not in semester_cache:
-                await sync_semesters(sem_name, user_id)
-                await update_cache()
+            cache_key = (user_id, sem_name)
+            semester_id = semester_cache.get(cache_key)
 
-            semester_id = semester_cache.get(sem_name)
-
-            # Вызываем обновление
             res = await update_lessons_and_grades(user_id, subject_name, score_float, semester_id)
 
-            # ПРОВЕРКА: Если вернулся список и он не пустой — берем первый элемент
             if res and isinstance(res, list):
-                # Ищем наш предмет в списке, который вернула база
                 for db_item in res:
                     if db_item.lesson_name == subject_name:
                         result_grades.append(db_item)
-                        break  # Нашли нужный — выходим из внутреннего цикла
+                        break
 
             elif res and not isinstance(res, list):
-                # На случай, если функция вернет один объект
                 result_grades.append(res)
 
         text_lines = ["📊 <b>Твои баллы за семестр:</b>\n"]
