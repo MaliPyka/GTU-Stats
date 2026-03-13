@@ -27,7 +27,7 @@ async def get_gtu_grades(login, password):
             await page.click('button:has(img[src="assets/icons/flags/en.png"])')
             # заходим на страницу с баллами
             await page.goto("https://vici.gtu.ge/#/learningCard")
-            await page.wait_for_selector('mat-table', timeout=5000)
+            await page.wait_for_selector('mat-table', timeout=15000)
 
             # собираем HTML код страницы
             content = await page.content()

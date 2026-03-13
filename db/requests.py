@@ -87,6 +87,13 @@ async def get_all_semesters(tg_id: int):
         return query.scalars().all()
 
 
+async def get_all_semesters_db():
+    async with async_session() as session:
+        # Запрашиваем семестры без фильтра по tg_id
+        query = await session.execute(select(Semester))
+        return query.scalars().all()
+
+
 async def get_semester_grades(tg_id: int, sem_id: int):
     async with async_session() as session:
         query = await session.execute(select(Grade).where(Grade.tg_id == tg_id, Grade.semester_id == sem_id))

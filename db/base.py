@@ -6,7 +6,7 @@ from core.config import DbConnectConfig
 
 engine = create_async_engine(
     DbConnectConfig.DATABASE_URL,
-    echo=True,
+    echo=False,
     connect_args={
         "command_timeout": 60,
     }
