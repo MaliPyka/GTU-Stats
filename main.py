@@ -29,7 +29,7 @@ async def main():
     try:
         scheduler = AsyncIOScheduler()
 
-        scheduler.add_job(check_grades_job, "interval", minutes=1, args=(bot,))
+        scheduler.add_job(check_grades_job, "interval", minutes=60, args=(bot,))
         scheduler.start()
         await create_db()
         await update_cache(tg_id)

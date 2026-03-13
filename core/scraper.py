@@ -47,13 +47,19 @@ def parse_grades(html_content):
     if not tables:
         return final_data
 
-    semester_pattern = re.compile(r"\d{4}/\d{4}.*")
+    headers = []
+    for text_node in soup.find_all(string=re.compile(r"202\d/202\d")):
+        clean_text = text_node.strip()
+        if clean_text and len(clean_text) < 40 and clean_text not in headers:
+            headers.append(clean_text)
 
-    for table in tables:
+    for i, table in enumerate(tables):
         current_semester_data = []
 
-        semester_elem = table.find_previous(string=semester_pattern)
-        semester_name = semester_elem.strip() if semester_elem else "Unknown Semester"
+        if i < len(headers):
+            semester_name = headers[i]
+        else:
+            semester_name = f"Unknown Semester {i+1}"
 
         rows = table.find_all(role='row')
         for row in rows:
@@ -83,7 +89,7 @@ def parse_grades(html_content):
                     "score": score_value
                 })
 
-        final_data = current_semester_data + final_data
+        final_data.extend(current_semester_data)
 
     return final_data
 

@@ -18,7 +18,7 @@ class Grade(Base):
     __tablename__ = "grades"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    tg_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.tg_id"), nullable=False)
+    tg_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.tg_id", ondelete='CASCADE'), nullable=False)
     lesson_name: Mapped[str] = mapped_column(String, nullable=False)
     score: Mapped[float] = mapped_column(Float, default = 0.0)
     old_score: Mapped[float] = mapped_column(Float, default = 0.0)
@@ -34,6 +34,6 @@ class Semester(Base):
     __tablename__ = "semesters"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    tg_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.tg_id"), nullable=False)
+    tg_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.tg_id", ondelete='CASCADE'), nullable=False)
     semester_name: Mapped[str] = mapped_column(String, nullable=False)
 
