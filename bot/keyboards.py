@@ -32,3 +32,11 @@ def get_profile_keyboard() -> InlineKeyboardMarkup:
     ])
 
     return keyboard
+
+
+def choose_language_keyboard() -> InlineKeyboardMarkup:
+    Keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🇷🇺 русский", callback_data="ru"), InlineKeyboardButton(text="🇬🇪 ქართული", callback_data="ka"), InlineKeyboardButton(text="🇬🇧 english", callback_data="en")]
+    ])
+
+    return Keyboard

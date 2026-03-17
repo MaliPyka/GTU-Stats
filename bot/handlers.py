@@ -9,7 +9,7 @@ from db.requests import add_user, check_user_exists, update_lessons_and_grades, 
     get_semester_id_by_index, get_semester_grades, delete_user, get_current_semester
 from core.security import encrypt_password, decrypt_password
 from core.scraper import get_gtu_grades
-from bot.keyboards import refresh_button, get_main_menu, get_profile_keyboard
+from bot.keyboards import refresh_button, get_main_menu, get_profile_keyboard, choose_language_keyboard
 from bot.cache import update_cache, semester_cache
 
 router = Router()
@@ -20,8 +20,12 @@ class Registration(StatesGroup):
 
 
 
-
 @router.message(CommandStart())
+async def choose_language_cmd(message: Message):
+    await message.answer("Выберите язык / აირჩიეთ ენა / Choose language", reply_markup=choose_language_keyboard())
+
+
+
 async def start_cmd(message: Message, state: FSMContext):
     await state.clear()
 
