@@ -5,9 +5,9 @@ from db.models import User, Grade, Semester
 from db.base import async_session
 
 
-async def add_user(tg_id: int, login: str, password: bytes):
+async def add_user(tg_id: int, login: str, password: bytes, lang: str):
     async with async_session() as session:
-        session.add(User(tg_id=tg_id,login=login,encrypted_password=password))
+        session.add(User(tg_id=tg_id,login=login,encrypted_password=password,language=lang))
         await session.commit()
 
 async def check_user_exists(tg_id: int) -> bool:
@@ -19,13 +19,11 @@ async def check_user_exists(tg_id: int) -> bool:
 
 async def update_lessons_and_grades(tg_id: int, lesson_name: str, score: float, semester_id: int):
     async with async_session() as session:
-        # 1. Ищем конкретный предмет
         query = await session.execute(
             select(Grade).where(Grade.tg_id == tg_id, Grade.lesson_name == lesson_name)
         )
         grade_obj = query.scalars().one_or_none()
 
-        # 2. Создаем или обновляем
         if grade_obj is None:
             grade_obj = Grade(
                 tg_id=tg_id,
@@ -130,6 +128,12 @@ async def get_current_semester(tg_id: int):
         current_semester = result.scalar()
 
         return current_semester
+
+async def get_all_language():
+    async with async_session() as session:
+        query = await session.execute(select(User.tg_id, User.language))
+        return query.all()
+
 
 
 

@@ -20,6 +20,7 @@ services:
       - db
     env_file:
       - .env
-
+    environment:
+      - PYTHONUNBUFFERED=1
 volumes:
   postgres_data:

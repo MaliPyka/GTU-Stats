@@ -11,6 +11,7 @@ class User(Base):
     tg_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
     login: Mapped[str] = mapped_column(String)
     encrypted_password: Mapped[bytes] = mapped_column(LargeBinary)
+    language: Mapped[str] = mapped_column(String, default = "en")
     created_at: Mapped[DateTime] = mapped_column(DateTime,default=func.now())
 
 
