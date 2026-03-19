@@ -22,6 +22,12 @@ async def update_cache(tg_id):
     for sem in raw_data:
         semester_cache[(sem.tg_id, sem.semester_name)] = sem.id
 
+def clear_user_semester_cache(tg_id: int):
+    global semester_cache
+    keys_to_remove = [key for key in semester_cache.keys() if key[0] == tg_id]
+    for key in keys_to_remove:
+        del semester_cache[key]
+
 
 async def load_all_users_language():
     global language_cache

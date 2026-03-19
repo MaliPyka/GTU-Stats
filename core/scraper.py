@@ -3,43 +3,52 @@ import re
 
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
+from bot.cache import get_user_language
 
-async def get_gtu_grades(login, password):
+async def get_gtu_grades(login, password, user_id):
+    user_lang = get_user_language(user_id)
+
     async with async_playwright() as p:
-        # запуск браузера
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
 
         try:
-            # заходим на страницу регистрации
             await page.goto("https://vici.gtu.ge/#/login")
 
-            # ввод данных
             await page.fill('input[formcontrolname="username"]', login)
             await page.fill('input[formcontrolname="password"]', password)
-
-            # нажатие кнопки входа
             await page.keyboard.press("Enter")
-            await page.click('text="დახურვა"')
-            await page.wait_for_url("https://vici.gtu.ge/#/dashboard")
 
-            # жмем на перевод страницы
-            await page.click('button:has(img[src="assets/icons/flags/en.png"])')
-            # заходим на страницу с баллами
+            try:
+                await page.click('text="დახურვა"', timeout=3000)
+            except Exception:
+                pass
+
+            await page.wait_for_url("https://vici.gtu.ge/#/dashboard", timeout=10000)
+
+            if user_lang != "ka":
+                try:
+                    await page.wait_for_selector('button:has(img[src="assets/icons/flags/en.png"])', timeout=5000)
+                    await page.click('button:has(img[src="assets/icons/flags/en.png"])')
+                    await page.wait_for_timeout(1000)
+                except Exception as e:
+                    print(f"Предупреждение: не удалось сменить язык на сайте: {e}")
+
             await page.goto("https://vici.gtu.ge/#/learningCard")
             await page.wait_for_selector('mat-table', timeout=15000)
 
-            # собираем HTML код страницы
             content = await page.content()
-            return parse_grades(content)
+
+            return parse_grades(content, user_lang)
+            
         except Exception as e:
-                print(f"Ошибка парсинга: {e}")
-                return None
+            print(f"Ошибка парсинга для юзера {user_id}: {e}")
+            return None
         finally:
             await browser.close()
 
 
-def parse_grades(html_content):
+def parse_grades(html_content, user_lang='en'):
     soup = BeautifulSoup(html_content, 'html.parser')
     final_data = []
 
@@ -71,15 +80,26 @@ def parse_grades(html_content):
 
             if subject_elem and score_elem:
                 full_name = subject_elem.get_text(strip=True)
-                match = re.search(r'[А-Яа-яЁё]', full_name)
+                display_name = full_name
 
-                if match:
-                    display_name = full_name[match.start():]
-                    while display_name.count(')') > display_name.count('(') and display_name.endswith(')'):
-                        display_name = display_name[:-1]
-                    display_name = display_name.strip()
-                else:
+                if user_lang == 'ka':
                     display_name = full_name
+                    
+                elif user_lang == 'ru':
+                    match = re.search(r'[А-Яа-яЁё]', full_name)
+                    if match:
+                        display_name = full_name[match.start():]
+                        while display_name.count(')') > display_name.count('(') and display_name.endswith(')'):
+                            display_name = display_name[:-1]
+                        display_name = display_name.strip()
+                        
+                elif user_lang == 'en':
+                    match = re.search(r'[А-Яа-яЁё]', full_name)
+                    if match:
+                        display_name = full_name[:match.start()].strip()
+                        
+                        if display_name.endswith('('):
+                            display_name = display_name[:-1].strip()
 
                 score_value = score_elem.get_text(strip=True)
 

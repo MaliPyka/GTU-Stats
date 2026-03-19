@@ -29,7 +29,8 @@ def get_main_menu(lang: str = 'en') -> ReplyKeyboardMarkup:
 
 def get_profile_keyboard(lang: str = 'en') -> InlineKeyboardMarkup:
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=get_text('btn_change_login', lang), callback_data="reset_account")]
+        [InlineKeyboardButton(text=get_text('btn_change_login', lang), callback_data="reset_account")],
+        [InlineKeyboardButton(text=get_text('btn_change_language', lang), callback_data="change_language")]
     ])
 
     return keyboard
@@ -43,3 +44,42 @@ def choose_language_keyboard() -> InlineKeyboardMarkup:
     ])
 
     return Keyboard
+
+
+def admin_keyboard() -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📢 Рассылка всем", callback_data="admin_broadcast")],
+        [InlineKeyboardButton(text="📥 Обращения юзеров (0)", callback_data="admin_feedback")]
+    ])
+
+    return keyboard
+
+
+def get_admin_reply_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✍️ Ответить", callback_data=f"reply_{user_id}")]
+    ])
+
+
+def get_cancel_support_keyboard(lang: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=get_text('btn_cancel', lang), callback_data="cancel_support")]
+    ])
+
+
+def get_cancel_broadcast_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_broadcast")]
+    ])
+
+
+def get_admin_main_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📢 Рассылка всем", callback_data="admin_broadcast")]
+    ])
+    
+
+def get_back_to_admin_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_admin")]
+    ])

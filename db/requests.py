@@ -63,12 +63,18 @@ async def get_all_user():
         return query.scalars().all()
     
 
-async def sync_old_scores_in_db(tg_id, lesson_name, current_score):
+async def sync_old_scores_in_db(tg_id: int, lesson_name: str, new_score: float, semester_id: int):
     async with async_session() as session:
         await session.execute(
             update(Grade)
-            .where(Grade.tg_id == tg_id, Grade.lesson_name == lesson_name, Grade.actual == True)
-            .values(old_score=current_score)
+            .where(
+                Grade.tg_id == tg_id, 
+
+                Grade.lesson_name == lesson_name,
+
+                Grade.semester_id == semester_id # Точечный удар по нужному семестру!
+            )
+            .values(old_score=new_score)
         )
         await session.commit()
 
@@ -133,6 +139,34 @@ async def get_all_language():
     async with async_session() as session:
         query = await session.execute(select(User.tg_id, User.language))
         return query.all()
+    
+async def change_user_language(user_id: int, new_lang: str):
+    async with async_session() as session:
+        await session.execute(update(User).where(User.tg_id == user_id).values(language = new_lang))
+        await session.commit()
+
+async def clear_user_data_on_lang_change(tg_id: int):
+    async with async_session() as session:
+        await session.execute(delete(Grade).where(Grade.tg_id == tg_id))
+        await session.execute(delete(Semester).where(Semester.tg_id == tg_id))
+        
+        await session.commit()
+
+
+async def get_total_users_count() -> int:
+    async with async_session() as session:
+        result = await session.execute(select(func.count(User.tg_id)))
+        return result.scalar() or 0
+
+async def get_language_stats() -> dict:
+    async with async_session() as session:
+        result = await session.execute(
+            select(User.language, func.count(User.tg_id)).group_by(User.language)
+        )
+        stats = result.all()
+        
+        return {lang: count for lang, count in stats if lang}
+        
 
 
 

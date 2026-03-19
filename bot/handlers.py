@@ -1,28 +1,53 @@
-from aiogram import F, Router
+import asyncio
+
+from aiogram import F, Bot, Router
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandStart, Command, StateFilter
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
+from html import escape
 
-from db.requests import add_user, check_user_exists, update_lessons_and_grades, get_user_data, sync_semesters, \
-    get_semester_id_by_index, get_semester_grades, delete_user, get_current_semester
+from db.requests import add_user, check_user_exists, clear_user_data_on_lang_change, get_all_user, get_language_stats, get_total_users_count, update_lessons_and_grades, get_user_data, sync_semesters, \
+    get_semester_id_by_index, get_semester_grades, delete_user, get_current_semester, change_user_language
 from core.security import encrypt_password, decrypt_password
 from core.scraper import get_gtu_grades
-from bot.keyboards import refresh_button, get_main_menu, get_profile_keyboard, choose_language_keyboard
-from bot.cache import update_cache, semester_cache, get_user_language, set_user_language
+from bot.keyboards import admin_keyboard, get_admin_main_keyboard, get_back_to_admin_keyboard, refresh_button, get_main_menu, get_profile_keyboard, choose_language_keyboard, get_admin_reply_keyboard, get_cancel_support_keyboard, get_cancel_broadcast_keyboard
+from bot.cache import update_cache, semester_cache, get_user_language, set_user_language, clear_user_semester_cache
 from bot.texts import get_text
 
 router = Router()
-
+ADMIN_ID = 992941959
 
 class Registration(StatesGroup):
+    change_language = State()
     waiting_language = State()
     waiting_login = State()
     waiting_password = State()
 
+class SupportState(StatesGroup):
+    waiting_for_message = State()
+
+class AdminReplyState(StatesGroup):
+    waiting_for_reply = State()
+    user_id_to_reply = State()
+
+class AdminBroadcastState(StatesGroup):
+    waiting_for_message = State()
 
 @router.message(CommandStart())
 async def choose_language_cmd(message: Message, state: FSMContext):
+
+    if await check_user_exists(message.from_user.id):
+        await state.clear() 
+        
+        user_lang = get_user_language(message.from_user.id) 
+
+        await message.answer(
+            get_text('already_registered', user_lang),
+            parse_mode="HTML"
+        )
+        return
+
     await state.set_state(Registration.waiting_language)
 
     text = get_text('choose_language', 'en')
@@ -108,7 +133,7 @@ async def stats_cmd(event: Message | CallbackQuery):
     decrypted_password = decrypt_password(user_data.encrypted_password)
 
     try:
-        data = await get_gtu_grades(user_data.login, decrypted_password)
+        data = await get_gtu_grades(user_data.login, decrypted_password, user_id)
 
         unique_sems = list(dict.fromkeys(item['semester'] for item in data))
         current_semester_name = unique_sems[0] if unique_sems else None
@@ -250,6 +275,64 @@ async def profile_cmd(message: Message):
     )
 
 
+@router.callback_query(F.data == "change_language")
+async def change_language_menu(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    lang = get_user_language(user_id)
+    
+    await callback.answer()
+    await callback.message.edit_text(
+        text=get_text('choose_language', lang), 
+        reply_markup=choose_language_keyboard(), 
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data.in_({"ru", "en", "ka"}))
+async def change_language_final(callback: CallbackQuery, state: FSMContext):
+    current_state = await state.get_state()
+    new_lang = callback.data
+    user_id = callback.from_user.id
+
+    set_user_language(user_id, new_lang)
+    await change_user_language(user_id, new_lang)
+    await callback.answer()
+
+    if current_state is None:
+        await clear_user_data_on_lang_change(user_id)
+        clear_user_semester_cache(user_id)
+        
+        await callback.message.edit_text(
+            text=get_text('lang_changed', new_lang),
+            parse_mode="HTML"
+        )
+        
+        await asyncio.sleep(3)
+
+        user_data = await get_user_data(user_id)
+        if user_data:
+            reg_date = user_data.created_at.strftime("%d.%m.%Y") if user_data.created_at else get_text('profile_unknown_date', new_lang)
+            text = get_text('profile_text', new_lang).format(
+                login=user_data.login,
+                reg_date=reg_date
+            )
+
+            await callback.message.edit_text(
+                text=text,
+                parse_mode="HTML",
+                reply_markup=get_profile_keyboard(new_lang)
+            )
+    
+    elif current_state == Registration.waiting_language:
+        await state.update_data(language=new_lang)
+        if await check_user_exists(user_id):
+            await state.clear()
+            return await callback.message.answer(get_text('already_registered', new_lang))
+        
+        await callback.message.answer(get_text('welcome', new_lang), reply_markup=get_main_menu(new_lang))
+        await state.set_state(Registration.waiting_login)
+    
+
 @router.callback_query(F.data == "reset_account")
 async def reset_account_cmd(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
@@ -259,7 +342,246 @@ async def reset_account_cmd(callback: CallbackQuery, state: FSMContext):
     reset_text = get_text('reset_ask_login', user_lang)
     await callback.message.answer(reset_text, parse_mode="HTML")
     await delete_user(user_id)
+    clear_user_semester_cache(user_id)
 
     await state.update_data(language=user_lang)
     await state.set_state(Registration.waiting_login)
     return None
+
+
+@router.message(Command("admin"))
+async def admin_panel_cmd(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    total_users = await get_total_users_count()
+    lang_stats = await get_language_stats()
+    
+    ru_count = lang_stats.get('ru', 0)
+    en_count = lang_stats.get('en', 0)
+    ka_count = lang_stats.get('ka', 0)
+
+    text = (
+        "👑 <b>Admin Panel</b>\n"
+        "\n"
+        f"👥 Всего: <code>{total_users}</code>\n"
+        f"🌍 RU: {ru_count} | EN: {en_count} | KA: {ka_count}\n"
+        " "
+    )
+
+    # Клавиатура подтянется уже без лишней кнопки
+    await message.answer(text, reply_markup=get_admin_main_keyboard(), parse_mode="HTML")
+
+
+@router.message(Command("support"))
+async def support_cmd(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    user_lang = get_user_language(user_id)
+    
+    prompt_msg = await message.answer(
+        get_text('support_prompt', user_lang), 
+        reply_markup=get_cancel_support_keyboard(user_lang),
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(SupportState.waiting_for_message)
+    await state.update_data(prompt_message_id=prompt_msg.message_id)
+
+  
+@router.callback_query(F.data == "cancel_support", StateFilter(SupportState.waiting_for_message))
+async def cancel_support_callback(callback: CallbackQuery, state: FSMContext):
+    user_lang = get_user_language(callback.from_user.id)
+
+    await state.clear()
+
+    await callback.message.edit_text(
+        get_text('support_cancelled', user_lang),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.message(SupportState.waiting_for_message)
+async def process_support_message(message: Message, state: FSMContext, bot: Bot):
+    user_id = message.from_user.id
+    username = message.from_user.username or "Без юзернейма"
+    user_lang = get_user_language(user_id)
+    
+    safe_text = escape(message.text or "Без текста (возможно фото/стикер)")
+    
+    data = await state.get_data()
+    prompt_message_id = data.get("prompt_message_id")
+    
+    if prompt_message_id:
+        try:
+            await bot.delete_message(chat_id=user_id, message_id=prompt_message_id)
+        except Exception:
+            pass
+
+    admin_text = (
+        f"📩 <b>Новое обращение!</b>\n"
+        f"👤 От: {message.from_user.full_name} (@{username})\n"
+        f"🆔 ID: <code>{user_id}</code>\n"
+        "────────────────\n"
+        f"<i>{safe_text}</i>"
+    )
+    
+    reply_kb = get_admin_reply_keyboard(user_id)
+    
+    try:
+        await bot.send_message(ADMIN_ID, admin_text, reply_markup=reply_kb, parse_mode="HTML")
+        await message.answer(get_text('support_sent', user_lang), parse_mode="HTML")
+    except Exception as e:
+        print(f"Ошибка при отправке обращения: {e}")
+        await message.answer("❌ Произошла ошибка. Попробуйте позже.")
+        
+    await state.clear()
+
+
+@router.callback_query(F.data.startswith("reply_"))
+async def admin_reply_callback(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        return await callback.answer("⛔ Нет прав!", show_alert=True)
+        
+    target_user_id = int(callback.data.split("_")[1])
+    
+    await state.update_data(user_id_to_reply=target_user_id)
+    await state.set_state(AdminReplyState.waiting_for_reply)
+    
+    await callback.message.answer(
+        f"✍️ Напиши ответ для пользователя <code>{target_user_id}</code>.\n\n<i>Текст будет отправлен от имени бота.</i>", 
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.message(AdminReplyState.waiting_for_reply)
+async def send_admin_reply(message: Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    target_user_id = data.get("user_id_to_reply")
+    
+    safe_reply = escape(message.text or "")
+    
+    reply_text_for_user = (
+        f"👨‍💻 <b>Ответ от разработчика:</b>\n\n"
+        f"{safe_reply}"
+    )
+    
+    try:
+        await bot.send_message(target_user_id, reply_text_for_user, parse_mode="HTML")
+        await message.answer("✅ Ответ успешно доставлен!")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка отправки: {e}")
+        
+    await state.clear()
+
+
+@router.callback_query(F.data == "admin_broadcast")
+async def admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        return await callback.answer("⛔ Нет прав!", show_alert=True)
+        
+    await state.set_state(AdminBroadcastState.waiting_for_message)
+    
+    prompt_msg = await callback.message.edit_text(
+        "📢 <b>Режим рассылки</b>\n\n"
+        "Отправь сообщение, которое нужно разослать всем пользователям бота:\n\n",
+        reply_markup=get_cancel_broadcast_keyboard(),
+        parse_mode="HTML"
+    )
+
+    await state.update_data(prompt_message_id=prompt_msg.message_id)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "cancel_broadcast", StateFilter(AdminBroadcastState.waiting_for_message))
+async def cancel_broadcast_callback(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text("✅ Рассылка отменена.", parse_mode="HTML")
+    await callback.answer()
+
+
+@router.message(AdminBroadcastState.waiting_for_message)
+async def process_broadcast_message(message: Message, state: FSMContext, bot: Bot):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    text_to_send = message.html_text or message.text
+    if not text_to_send:
+        return await message.answer("❌ Рассылка поддерживает только текстовые сообщения.")
+
+    data = await state.get_data()
+    prompt_message_id = data.get("prompt_message_id")
+    
+    if prompt_message_id:
+        try:
+            await bot.delete_message(chat_id=message.from_user.id, message_id=prompt_message_id)
+        except Exception:
+            pass
+
+    users = await get_all_user()
+    
+    await state.clear()
+    status_msg = await message.answer(f"⏳ Начинаю рассылку для <code>{len(users)}</code> пользователей...")
+
+    success_count = 0
+    fail_count = 0
+
+    for user in users:
+        try:
+            await bot.send_message(user.tg_id, text_to_send, parse_mode="HTML")
+            success_count += 1
+        except Exception:
+            fail_count += 1
+        
+        await asyncio.sleep(0.05)
+
+    await status_msg.edit_text(
+        f"✅ <b>Рассылка завершена!</b>\n\n"
+        f"Успешно доставлено: <code>{success_count}</code>\n"
+        f"Ошибок (заблокировали бота): <code>{fail_count}</code>",
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "admin_feedback")
+async def admin_feedback_info(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        return
+
+    text = "📥 <b>Обращения</b>\n\nНовые тикеты прилетают напрямую в личку. Общая база тикетов пока не подключена."
+    
+    await callback.message.edit_text(
+        text, 
+        reply_markup=get_back_to_admin_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_admin")
+async def back_to_admin_handler(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    
+    total_users = await get_total_users_count()
+    lang_stats = await get_language_stats()
+    
+    ru_count = lang_stats.get('ru', 0)
+    en_count = lang_stats.get('en', 0)
+    ka_count = lang_stats.get('ka', 0)
+
+    text = (
+        "👑 <b>Admin Panel</b>\n"
+        "────────────────\n"
+        f"👥 Всего: <code>{total_users}</code>\n"
+        f"🌍 RU: {ru_count} | EN: {en_count} | KA: {ka_count}\n"
+        "────────────────"
+    )
+
+    await callback.message.edit_text(
+        text, 
+        reply_markup=get_admin_main_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
